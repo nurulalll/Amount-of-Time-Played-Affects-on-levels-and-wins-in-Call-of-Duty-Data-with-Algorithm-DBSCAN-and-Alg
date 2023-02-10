@@ -1,0 +1,202 @@
+---
+title: "UJIAN AKHIR SEMESTER"
+author: "Nurul Aini Ltivah 00000052204"
+CODe: "12/15/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+##Analisis Data
+1). Validasi Data
+```{r}
+#memanggil library yang dibutuhkan 
+library(Amelia)
+library(GGally)
+library(tidyverse)
+
+#membaca data
+COD <- read_excel("B2_Nurul Aini Lativah_00000052204.xlsx")
+
+#melakukan validasi data
+missmap(COD)
+
+#mengubah tipe data menjadi as factor
+COD$time[COD$timePlayed < 426.8] <- "1"
+COD$time[COD$timePlayed >= 426.8] <- "2"
+COD$time <- as.factor(COD$time)
+```
+2) Data Preparation
+```{r}
+#Drop Data
+numerical <- select_if(COD, is.numeric) #ubah nama variabel
+time <- COD$time
+numerical <- cbind(numerical, time)
+numerical <- subset(COD, select = c("wins", "level","kills", "deaths", "averageTime", "headshots", "misses", "shots", "timePlayed"))
+
+#Remove NA
+numdata <- na.omit(numerical)
+
+#Split Data
+set.seed(52204)
+sampl <- sample(nrow(numdata), 0.8 * nrow(numdata), replace = FALSE)
+training <- numdata[sampl,]
+testing <- numdata[-sampl,]
+
+nrow(training)
+nrow(testing)
+
+# rujukan clustering manual 
+numdata$class <- ifelse(numdata$timePlayed>=485.5,2,1)
+table(numdata$class)
+```
+
+3) visualisasi Data
+```{r}
+#menggunakan boxplot
+boxplot(COD$timePlayed, main = "Distribusi Data Time Played", xlab = "x", ylab = "y", col = c("cyan"), horizontal = TRUE, outline = FALSE) 
+
+#menggunakan Histogram
+library(dplyr)
+library(tidyr)
+numdata %>% gather(Attributes, value, 1:8) %>%
+        ggplot(aes(x = value, fill = Attributes)) + geom_histogram(colour = "black", show.legend = FALSE) + facet_wrap(~Attributes, scales="free_x") + labs(x="Distribusi COD PLAYER SKILLSS", y="Frekuensi", title="COD Attributes - Histograms") + theme_bw()
+
+#menggunakan scater plot
+plot(numdata$timePlayed, numdata$wins, xlab = "timePlayed", ylab = "wins", main = "Plot timeplayed vs wins", col = "sky blue")
+
+# korelasi antarvariabel menggunakan scaterplot
+ggpairs(cbind(numdata), lower=list(continuous="points"), upper=list(continuous="blank"), axisLabels="none", switch="both") + theme_bw()
+
+#menggunakan density 
+dens <- density(numdata$timePlayed)
+plot(dens,col="red")
+
+#ggpairs
+#install.packages('GGally')
+library(GGally)
+ggpairs(numdata)
+```
+
+4) Eksplorasi Data
+```{r}
+library(ggplot2)
+library(GGally)
+library(tidyverse)
+library(knitr)
+
+#menampilkan struktur data
+str(COD) #sebelum dipilih beberapa variabel
+str(numdata) #variabel yg terpilih
+
+#menampilkan 6 baris data pertama
+head(numdata)
+
+#menampilkan 6 baris data terakhir
+tail(numdata)
+
+#menampilkan summary data
+summary(numdata)
+
+```
+
+#Algorithm DBSCAN
+```{r}
+library(fpc)
+library(factoextra)
+library(tidyverse)
+library(ggplot2)
+library(gridExtra)
+library(caret)
+
+
+#calculate suitable epsilon
+dbscan::kNNdistplot(numdata[1:8], k = 2)
+epsilon <- 25000
+abline(h = epsilon, lty = 2)
+# eps is roughly at 25000
+
+
+#cluster plot
+dbb2 <- fpc::dbscan(numdata[1:8], eps = epsilon, MinPts = 5)
+dbb2
+dbdb <- dbscan::dbscan(numdata[1:8], eps = epsilon, minPts = 5)
+dbdb
+factoextra::fviz_cluster(dbdb, data = numdata[1:8], show.clust.cent = TRUE, geom = "point", palette = "jco", ggtheme = theme_classic())
+
+
+
+g <- ggplot(numdata, aes(level, wins )) +   
+  labs(col = "TIME PLAYED") 
+
+g1 <- g + geom_point(aes(col = numdata$timePlayed)) + ggtitle("Original Data")
+g2 <- g + geom_point(aes(col = factor(dbb2$cluster+1))) + ggtitle("fpc")
+g3 <- g + geom_point(aes(col = factor(dbdb$cluster+1))) + ggtitle("dbscan")
+
+gridExtra::grid.arrange(g1,g2,g3, nrow = 3)
+
+
+#confusion matrix
+predik <- dbdb$cluster
+truth <- as.factor(numdata$class)
+
+#Pred vs Truth
+newdata <- data.frame(predik, truth)
+newdata <- newdata[which (newdata$predik !=0),]
+newdata$predik <- as.factor(newdata$predik)
+
+str(newdata)
+
+
+confusionMatrix(newdata$predik, newdata$truth)
+
+#Accuracy : 0.7709
+#Sensitivity : 1.00000
+#Specificity : 0.03571
+```
+
+
+# Algorithm Random Forest
+
+```{r}
+
+library(randomForest)
+library(caret)
+require(caTools)
+
+summary(COD)
+
+#fit model
+rf <- randomForest(time ~ COD$wins,data = training)
+rf
+
+#Prediction
+p1 <- predict(rf, time)
+
+#Confusion Matrix
+caret::confusionMatrix(p1,time)
+plot(rf)
+
+#accuracy: 0.966
+#Sensitivity : 0.9912 
+#Specificity : 0.8981
+```
+
+# perbandingan akurasi kedua algoritma
+
+```{r}
+confusionMatrix(newdata$predik, newdata$truth)
+caret::confusionMatrix(p1,time)
+
+#kesimpulan 
+#Algoritma Random Forest lebih baik untuk dgunakan dalamm menganilisis data ini karena tingkat akurasi yang sangat tinggi. Nilai output akurasi algoritma random forest bernilai 0.966, sedangkan nilai output akurasi algoritma DBSCAN bernilai 0.7709. 
+```
+
